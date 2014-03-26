@@ -38,7 +38,7 @@ __global__ void addKernel(float *oldMatrix)
 	//if block on the left, compute the boundarie. If inside block, the index is the same as this minus 1 (same row have consecutive numbers)
 	if (thx == 0) 	   {
 		 (blockIdx.x == 0) ?
-			 left = sin((M_PI*(row+1))/(blockDim.y*gridDim.y+1))*sin((M_PI*(row+1))/(blockDim.y*gridDim.y+1)) 
+			 left = __sinf((M_PI*(row+1))/(blockDim.y*gridDim.y+1))*__sinf((M_PI*(row+1))/(blockDim.y*gridDim.y+1)) 
 		   : left = oldMatrix[getGlobalIndex()-1] ;
 	}	
 	else
@@ -114,14 +114,14 @@ cudaEventDestroy(start);
 cudaEventDestroy(stop);    
 
 cudaMemcpy(h_A, oldMatrix, N*N * sizeof(float),cudaMemcpyDeviceToHost);
-/*
+
 for (int i = 0; i < N; i++)
 {	
 	for (int j = 0; j < 1; j++)
 		printf("%f ",h_A[i*N +j]);
 	printf("\n");
 }
-*/
+
 
 printf("Time for %d its: %f ms\n",its, time); // Very accurate
 checkCudaErrors(cudaFree(oldMatrix));
