@@ -20,7 +20,7 @@ __device__ int getGlobalIndex()
 	return col + row*blockDim.x * gridDim.x;
 }
 
-__global__ void addKernel(float *oldMatrix, float* newMatrix)
+__global__ void addKernel(float *oldMatrix)
 {
 	extern __shared__ float aux[];
 	int thx = threadIdx.x, thy = threadIdx.y;
@@ -70,16 +70,15 @@ __global__ void addKernel(float *oldMatrix, float* newMatrix)
 	}
 	else
 		bot = aux[botIndex];
-	
-	newMatrix[getGlobalIndex()] = 0.25*(left+right+top+bot);
+	__syncthreads();
+	oldMatrix[getGlobalIndex()] = 0.25*(left+right+top+bot);
 }
 
 int main()
 {
-	const int N = 1024;
+	const int N = 2048, its=1000;
     float *oldMatrix = 0,  *newMatrix = 0;
-	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));
-	checkCudaErrors( cudaMalloc((void**)&newMatrix, N * N*sizeof(float)));   
+	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));	
     
   
    float* h_A = 0;
@@ -89,8 +88,7 @@ int main()
 	  h_A[i]=0.0f;
   }
     // Copy input vectors from host memory to GPU buffers.
-    checkCudaErrors(cudaMemcpy(oldMatrix, h_A, N *N *sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(newMatrix, h_A, N *N *sizeof(float), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(oldMatrix, h_A, N *N *sizeof(float), cudaMemcpyHostToDevice));	
 	dim3 threadsPerBlock(16, 16);   
 	dim3 numBlocks(N/16, N/16);
     // Launch a kernel on the GPU with one thread for each element.
@@ -99,11 +97,10 @@ int main()
 cudaEventCreate(&start);
 cudaEventCreate(&stop);
 cudaEventRecord(start, 0); 
-addKernel<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix);
-for (int i = 0; i < 1000; i++)
-{
-	std::swap(oldMatrix, newMatrix);
-	addKernel<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix);	
+addKernel<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix);
+for (int i = 0; i < its; i++)
+{	
+	addKernel<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix);	
 }
 
 	cudaDeviceSynchronize();
@@ -116,7 +113,7 @@ cudaEventElapsedTime(&time, start, stop);
 cudaEventDestroy(start);
 cudaEventDestroy(stop);    
 
-cudaMemcpy(h_A, newMatrix, N*N * sizeof(float),cudaMemcpyDeviceToHost);
+cudaMemcpy(h_A, oldMatrix, N*N * sizeof(float),cudaMemcpyDeviceToHost);
 /*
 for (int i = 0; i < N; i++)
 {	
@@ -126,7 +123,7 @@ for (int i = 0; i < N; i++)
 }
 */
 
-printf("Time: %f ms\n", time); // Very accurate
+printf("Time for %d its: %f ms\n",its, time); // Very accurate
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 checkCudaErrors(cudaFreeHost(h_A));
