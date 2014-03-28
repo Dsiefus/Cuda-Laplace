@@ -1,4 +1,3 @@
-
 #include "cuda_runtime.h"
 #include <helper_cuda.h>
 #include <helper_timer.h>
@@ -20,7 +19,7 @@ __device__ int getGlobalIndex()
 	return col + row*blockDim.x * gridDim.x;
 }
 
-__global__ void JacobiStep(float *oldMatrix, float *diff)
+__global__ void JacobiStep(const float *oldMatrix, float *newMatrix, float *diff)
 {
 	extern __shared__ float aux[];
 	int thx = threadIdx.x, thy = threadIdx.y;
@@ -70,8 +69,11 @@ __global__ void JacobiStep(float *oldMatrix, float *diff)
 	}
 	else
 		bot = aux[botIndex];
-	__syncthreads();
-	oldMatrix[getGlobalIndex()] = 0.25*(left+right+top+bot);
+
+	float newValue =  0.25*(left+right+top+bot);
+	//printf("diff is %f\n",fabs(newValue - aux[ getSharedIndex(thx, thy)]));
+	diff[getGlobalIndex()] = fabs(newValue - aux[ getSharedIndex(thx, thy)]);	
+	newMatrix[getGlobalIndex()] = newValue;
 }
 
 __global__ void ComputeError(float* matrix)
@@ -121,11 +123,43 @@ __global__ void MaxReduction(int n, const float* input, float* output) {
 }
 
 
+float GetMax(const float* input, int N)
+{
+	dim3 grid_dim;
+dim3 BLOCK_DIM = 256;
+int current_n = N*N;
+float* newMatrix = 0;
+float* oldMatrix;
+checkCudaErrors(cudaMalloc((void**) &oldMatrix, N * N*sizeof(float)));
+checkCudaErrors(cudaMalloc((void**) &newMatrix, N * N*sizeof(float)));
+
+checkCudaErrors(cudaMemcpy(oldMatrix,input,N*N*sizeof(float),cudaMemcpyDeviceToDevice));
+while (current_n > 1) {
+	int blocks_required = (current_n - 1) / BLOCK_DIM.x + 1;	
+	grid_dim.x = static_cast<int>(ceil(sqrt(blocks_required)));
+	grid_dim.y = ((blocks_required - 1) / grid_dim.x) + 1;
+	int shmem_size = BLOCK_DIM.x*sizeof(float);
+	MaxReduction
+		<<< grid_dim, BLOCK_DIM, shmem_size >>>(current_n, oldMatrix, newMatrix);
+
+	std::swap(newMatrix, oldMatrix);
+	current_n = blocks_required;
+}
+
+  checkCudaErrors(cudaDeviceSynchronize());
+  float max;
+  checkCudaErrors(cudaMemcpy(&max, oldMatrix, sizeof(float), cudaMemcpyDeviceToHost));
+  checkCudaErrors(cudaFree(newMatrix));
+  checkCudaErrors(cudaFree(oldMatrix));
+  return max;
+}
+
 int main()
 {
-	const int N = 1024, its=1000;
-    float *oldMatrix = 0,  *diff = 0;
+	const int N = 2048, its=1000;
+    float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));	
+	checkCudaErrors( cudaMalloc((void**)&newMatrix, N * N*sizeof(float)));	
     checkCudaErrors( cudaMalloc((void**)&diff, N * N*sizeof(float)));	
   
    float* h_A = 0;
@@ -145,9 +179,13 @@ cudaEventRecord(start, 0);
 
 for (int i = 0; i < its; i++)
 {	
-	JacobiStep<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,diff);	
+	JacobiStep<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix,diff);	
+	std::swap(oldMatrix, newMatrix);
+	//if ((i+1) % 100 == 0)
+		//GetMax(diff,N);
 }           
 	cudaDeviceSynchronize();
+
 
 cudaEventRecord(stop, 0); // 0 - the default stream
 cudaEventSynchronize(stop);
@@ -162,28 +200,9 @@ ComputeError<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*s
 
 checkCudaErrors(cudaMemcpy(h_A, oldMatrix, N*N * sizeof(float),cudaMemcpyDeviceToHost));
 
-dim3 grid_dim;
-dim3 BLOCK_DIM = 256;
-int current_n = N*N;
-float* newMatrix = 0;
-checkCudaErrors(cudaMalloc((void**) &newMatrix, N * N*sizeof(float)));
-while (current_n > 1) {
-	int blocks_required = (current_n - 1) / BLOCK_DIM.x + 1;	
-	grid_dim.x = static_cast<int>(ceil(sqrt(blocks_required)));
-	grid_dim.y = ((blocks_required - 1) / grid_dim.x) + 1;
-	int shmem_size = BLOCK_DIM.x*sizeof(float);
-	MaxReduction
-		<<< grid_dim, BLOCK_DIM, shmem_size >>>(current_n, oldMatrix, newMatrix);
+float max;
 
-	std::swap(newMatrix, oldMatrix);
-	current_n = blocks_required;
-}
-
-  checkCudaErrors(cudaDeviceSynchronize());
-  float max;
-
-  checkCudaErrors(cudaMemcpy(&max, oldMatrix, sizeof(float), cudaMemcpyDeviceToHost));
-  printf("cuda max error: %f\n", max);
+  printf("cuda max error: %f\n", GetMax(oldMatrix,N));
 
   max = 0.0;
 for (int i = 0; i < N; i++)
@@ -194,14 +213,12 @@ for (int i = 0; i < N; i++)
 	}
 
 printf("cpu max error: %f\n",max);                                        
+printf("Time for N= %d, %d its: %f ms. Memory bandwith is %f GB/s\n",N,its, time, ((1e-6)*N*N)*3*its*sizeof(float)/(time)); // Very accurate
 
-printf("Time for N= %d, %d its: %f ms. Memory bandwith is %f GB/s\n",N,its, time, ((1e-6)*N*N)*2*its*sizeof(float)/(time)); // Very accurate
-checkCudaErrors(cudaFree(oldMatrix));
-checkCudaErrors(cudaFree(newMatrix));
+//checkCudaErrors(cudaFree(oldMatrix));
+//checkCudaErrors(cudaFree(newMatrix));
 checkCudaErrors(cudaFreeHost(h_A));
 checkCudaErrors( cudaDeviceReset());  
 
     return 0;
 }
-
-// Helper function for using CUDA to add vectors in parallel.
