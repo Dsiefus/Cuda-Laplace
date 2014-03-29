@@ -2,8 +2,23 @@
 #include <helper_cuda.h>
 #include <helper_timer.h>
 #include <stdio.h>
+#include <thrust/inner_product.h>
+#include <thrust/functional.h>
+#include <thrust/device_vector.h>
 
 #define PI 3.1415926535897932384626433832795
+
+template <typename T>
+struct abs_diff : public thrust::binary_function<T,T,T>
+{
+    __host__ __device__
+    T operator()(const T& a, const T& b)
+    {
+        return std::fabs(b - a);
+    }
+};
+
+
 
 //indexing of shared memory. Threads have 2 more rows and cols (for "halo" nodes)
 __device__ int getSharedIndex(int thrIdx, int thrIdy)
@@ -19,7 +34,7 @@ __device__ int getGlobalIndex()
 	return col + row*blockDim.x * gridDim.x;
 }
 
-__global__ void JacobiStep(const float *oldMatrix, float *newMatrix, float *diff)
+__global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 {
 	extern __shared__ float aux[];
 	int thx = threadIdx.x, thy = threadIdx.y;
@@ -72,7 +87,7 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix, float *diff
 
 	float newValue =  0.25*(left+right+top+bot);
 	//printf("diff is %f\n",fabs(newValue - aux[ getSharedIndex(thx, thy)]));
-	diff[getGlobalIndex()] = fabs(newValue - aux[ getSharedIndex(thx, thy)]);	
+	//diff[getGlobalIndex()] = fabs(newValue - aux[ getSharedIndex(thx, thy)]);	
 	newMatrix[getGlobalIndex()] = newValue;
 }
 
@@ -173,24 +188,40 @@ int main()
 	dim3 numBlocks(N/16, N/16);
     
 	cudaEvent_t start, stop;
+	float time, total_time = 0.0;
 cudaEventCreate(&start);
 cudaEventCreate(&stop);
-cudaEventRecord(start, 0); 
+
 
 for (int i = 0; i < its; i++)
 {	
-	JacobiStep<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix,diff);	
+	cudaEventRecord(start, 0); 
+
+	JacobiStep<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix);
+
+	cudaEventRecord(stop, 0); // 0 - the default stream
+cudaEventSynchronize(stop);
+cudaEventElapsedTime(&time, start, stop);
+
+if ((i+1) % 100 == 0)
+{
+thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(oldMatrix);
+thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
+	 // initial value of the reduction
+    float init = 0;    
+    thrust::maximum<float> binary_op1;
+    abs_diff<float> binary_op2;
+   float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  N*N,dev_ptrb, init, binary_op1, binary_op2); 
+   printf("maxx dif is %f\n",max_abs_diff);
+}
+total_time += time;
 	std::swap(oldMatrix, newMatrix);
-	//if ((i+1) % 100 == 0)
-		//GetMax(diff,N);
+           
 }           
 	cudaDeviceSynchronize();
 
 
-cudaEventRecord(stop, 0); // 0 - the default stream
-cudaEventSynchronize(stop);
-float time;
-cudaEventElapsedTime(&time, start, stop);
+
 
 cudaEventDestroy(start);
 cudaEventDestroy(stop);    
@@ -213,7 +244,7 @@ for (int i = 0; i < N; i++)
 	}
 
 printf("cpu max error: %f\n",max);                                        
-printf("Time for N= %d, %d its: %f ms. Memory bandwith is %f GB/s\n",N,its, time, ((1e-6)*N*N)*3*its*sizeof(float)/(time)); // Very accurate
+printf("Time for N= %d, %d its: %f ms. Memory bandwith is %f GB/s\n",N,its, total_time, ((1e-6)*N*N)*2*its*sizeof(float)/(total_time)); // Very accurate
 
 //checkCudaErrors(cudaFree(oldMatrix));
 //checkCudaErrors(cudaFree(newMatrix));
