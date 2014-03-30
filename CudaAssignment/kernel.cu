@@ -21,13 +21,13 @@ struct abs_diff : public thrust::binary_function<T,T,T>
 
 
 //indexing of shared memory. Threads have 2 more rows and cols (for "halo" nodes)
-__device__ int getSharedIndex(int thrIdx, int thrIdy)
+__device__ inline int getSharedIndex(int thrIdx, int thrIdy)
 {
 	return (thrIdy * blockDim.x + thrIdx);
 }
 
 //indexing of global memory corresponding to each thread
-__device__ int getGlobalIndex()
+__device__ inline int getGlobalIndex()
 {	
 	int col = threadIdx.x + blockDim.x * blockIdx.x;
 	int row = threadIdx.y + blockDim.y * blockIdx.y;
@@ -38,10 +38,6 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 {
 	extern __shared__ float aux[];
 	int thx = threadIdx.x, thy = threadIdx.y;
-    int blockId = blockIdx.x + blockIdx.y * gridDim.x; 
-	int threadId = blockId * (blockDim.x * blockDim.y) + (thy * blockDim.x) + thx;
-	//int col = thx + blockDim.x * blockIdx.x;
-	int row = thy + blockDim.y * blockIdx.y;
 	
 	aux[ getSharedIndex(thx, thy)] = oldMatrix[getGlobalIndex()];	
 
@@ -52,7 +48,8 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 	//if block on the left, compute the boundarie. If inside block, the index is the same as this minus 1 (same row have consecutive numbers)
 	if (thx == 0) 	   {
 		 (blockIdx.x == 0) ?
-			 left = __sinf((PI*(row+1))/(blockDim.y*gridDim.y+1))*__sinf((PI*(row+1))/(blockDim.y*gridDim.y+1)) 
+			 left = __sinf((PI*((thy + blockDim.y * blockIdx.y)+1))/(blockDim.y*gridDim.y+1))*
+					__sinf((PI*((thy + blockDim.y * blockIdx.y)+1))/(blockDim.y*gridDim.y+1)) 
 		   : left = oldMatrix[getGlobalIndex()-1] ;
 	}	
 	else
@@ -190,7 +187,7 @@ while (current_n > 1) {
 
 int main()
 {
-	const int N = 512, its=20000;
+	const int N = 1024, its=10000;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));	
 	checkCudaErrors( cudaMalloc((void**)&newMatrix, N * N*sizeof(float)));	
