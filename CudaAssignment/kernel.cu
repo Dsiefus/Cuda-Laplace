@@ -91,6 +91,25 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 	newMatrix[getGlobalIndex()] = newValue;
 }
 
+__global__ void ComputeAnalytical(float* matrix)
+{
+	int thx = threadIdx.x, thy = threadIdx.y;  		
+	int col = thx + blockDim.x * blockIdx.x + 1;
+	int row = thy + blockDim.y * blockIdx.y + 1;
+
+
+	float x = (float)col/(blockDim.x*gridDim.x+1);
+	float y = (float)row/(blockDim.y*gridDim.y+1);
+	
+	float analyticalValue = 0.0;
+	for (int n = 1; n < 100; n+=2) {				
+		analyticalValue += 4*(cos(PI*n)/(PI*n*n*n - 4*PI*n) - 1/(PI*n*n*n -4*PI*n))*sin(PI*n*y)*sinh((x - 1)*PI*n)/sinh(-PI*n);				
+	}	
+	//printf("GPU: for xy (%f,%f), thread (%d,%d) block(%d,%d), row %d col %d: %f\n", x,y, thx,thy, blockIdx.x ,blockIdx.y,row,col,analyticalValue);
+	 matrix[getGlobalIndex()] = analyticalValue;
+}
+
+
 __global__ void ComputeError(float* matrix)
 {
 	extern __shared__ float aux[];
@@ -171,7 +190,7 @@ while (current_n > 1) {
 
 int main()
 {
-	const int N = 2048, its=1000;
+	const int N = 512, its=20000;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));	
 	checkCudaErrors( cudaMalloc((void**)&newMatrix, N * N*sizeof(float)));	
@@ -203,7 +222,7 @@ for (int i = 0; i < its; i++)
 cudaEventSynchronize(stop);
 cudaEventElapsedTime(&time, start, stop);
 
-if ((i+1) % 100 == 0)
+if ((i+1) % (its/10) == 0)
 {
 thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(oldMatrix);
 thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
@@ -219,12 +238,10 @@ total_time += time;
            
 }           
 	cudaDeviceSynchronize();
-
-
-
-
 cudaEventDestroy(start);
 cudaEventDestroy(stop);    
+
+
 
 ComputeError<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix);
 	cudaDeviceSynchronize();
@@ -243,7 +260,7 @@ for (int i = 0; i < N; i++)
 		
 	}
 
-printf("cpu max error: %f\n",max);                                        
+printf("cpu max error: %f\n",max);  
 printf("Time for N= %d, %d its: %f ms. Memory bandwith is %f GB/s\n",N,its, total_time, ((1e-6)*N*N)*2*its*sizeof(float)/(total_time)); // Very accurate
 
 //checkCudaErrors(cudaFree(oldMatrix));
