@@ -61,15 +61,11 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 		 aux[botIndex]=oldMatrix[getGlobalIndex()+(blockDim.x * gridDim.x +2)];
 
 	__syncthreads();
-	right = aux[rightIndex];
-	top = aux[topIndex];
-	left = aux[leftIndex];
-	bot = aux[botIndex];
-
-	float newValue =  0.25*(left+right+top+bot);	
-	newMatrix[getGlobalIndex()] = newValue;
+	
+	newMatrix[getGlobalIndex()] =  0.25*(aux[rightIndex]+aux[topIndex]+ aux[leftIndex]+aux[botIndex]);
 }
 
+/*
 __global__ void ComputeAnalytical(float* matrix)
 {
 	int thx = threadIdx.x, thy = threadIdx.y;  		
@@ -168,6 +164,7 @@ while (current_n > 1) {
   checkCudaErrors(cudaFree(oldMatrix));
   return max;
 }
+*/
 
 int main()
 {
