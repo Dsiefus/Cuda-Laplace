@@ -23,7 +23,7 @@ struct abs_diff : public thrust::binary_function<T,T,T>
 //indexing of shared memory. Threads have 2 more rows and cols (for "halo" nodes)
 __device__ inline int getSharedIndex(int thrIdx, int thrIdy)
 {
-	return (thrIdy * blockDim.x + thrIdx);
+	return ((thrIdy+1) * (blockDim.x+2) + thrIdx +1);
 }
 
 //indexing of global memory corresponding to each thread
@@ -31,7 +31,7 @@ __device__ inline int getGlobalIndex()
 {	
 	int col = threadIdx.x + blockDim.x * blockIdx.x;
 	int row = threadIdx.y + blockDim.y * blockIdx.y;
-	return col + row*blockDim.x * gridDim.x;
+	return col+1 + (row+1)*(blockDim.x * gridDim.x +2);
 }
 
 __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
@@ -43,48 +43,30 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 	int leftIndex = getSharedIndex(thx-1,thy), rightIndex = getSharedIndex(thx+1,thy);
 	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);
 	float left, right, top, bot;
-	__syncthreads();
-	//if block on the left, compute the boundarie. If inside block, the index is the same as this minus 1 (same row have consecutive numbers)
-	if (thx == 0) 	   {
-		 (blockIdx.x == 0) ?
-			left = __sinf((PI*((thy + blockDim.y * blockIdx.y)+1))/(blockDim.y*gridDim.y+1))*
-					__sinf((PI*((thy + blockDim.y * blockIdx.y)+1))/(blockDim.y*gridDim.y+1)) 
-			//left = 0.0
-		   : left = oldMatrix[getGlobalIndex()-1] ;
-	}	
-	else
-		left = aux[leftIndex];
+	
+	//left
+	if (thx == 0) 	   
+		aux[leftIndex] = oldMatrix[getGlobalIndex()-1];	
 		
-	//if block on the top, fill boundaries = 0. If inside block, fill with global memory of this minus 1 row
-	if  (thy == 0) {
-		 (blockIdx.y == 0) ?
-			  top = 0.0
-			: top = oldMatrix[getGlobalIndex()-blockDim.x * gridDim.x];		
-	}
-	else
-		top = aux[topIndex];
+	//top
+	if  (thy == 0) 
+		 aux[topIndex] = oldMatrix[getGlobalIndex()-(blockDim.x * gridDim.x +2)];			
 
 	//right
-	if (thx == blockDim.x-1){
-		(blockIdx.x == gridDim.x-1) ?
-			  right = 0.0f
-			: right = oldMatrix[getGlobalIndex()+1];
-	}
-	else
-		right = aux[rightIndex];
+	if (thx == blockDim.x-1)
+		aux[rightIndex] = oldMatrix[getGlobalIndex()+1];		
 
 	//bot
-	if (thy == blockDim.y - 1){
-		(blockIdx.y == gridDim.y - 1) ?
-			  bot = 0.0f
-			: bot = oldMatrix[getGlobalIndex()+blockDim.x * gridDim.x];
-	}
-	else
-		bot = aux[botIndex];
+	if (thy == blockDim.y - 1)
+		 aux[botIndex]=oldMatrix[getGlobalIndex()+(blockDim.x * gridDim.x +2)];
 
-	float newValue =  0.25*(left+right+top+bot);
-	//printf("diff is %f\n",fabs(newValue - aux[ getSharedIndex(thx, thy)]));
-	//diff[getGlobalIndex()] = fabs(newValue - aux[ getSharedIndex(thx, thy)]);	
+	__syncthreads();
+	right = aux[rightIndex];
+	top = aux[topIndex];
+	left = aux[leftIndex];
+	bot = aux[botIndex];
+
+	float newValue =  0.25*(left+right+top+bot);	
 	newMatrix[getGlobalIndex()] = newValue;
 }
 
@@ -193,20 +175,24 @@ int main()
 		QueryPerformanceCounter(&t_ini);
 
 	const int N = 1024, its=5000;
+	const int matrixSize = (N+2)*(N+2);
 	float max;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
-	checkCudaErrors( cudaMalloc((void**)&oldMatrix, N * N*sizeof(float)));	
-	checkCudaErrors( cudaMalloc((void**)&newMatrix, N * N*sizeof(float)));	
-    checkCudaErrors( cudaMalloc((void**)&diff, N * N*sizeof(float)));	
+	checkCudaErrors( cudaMalloc((void**)&oldMatrix, matrixSize*sizeof(float)));	
+	checkCudaErrors( cudaMalloc((void**)&newMatrix, matrixSize*sizeof(float)));	
+   // checkCudaErrors( cudaMalloc((void**)&diff, N * N*sizeof(float)));	
   
    float* h_A = 0;
-  checkCudaErrors(cudaHostAlloc((void**) &h_A, N*N * sizeof(float), cudaHostAllocDefault));
-  for (int i = 0; i < N*N; i++)  
+  checkCudaErrors(cudaHostAlloc((void**) &h_A,matrixSize * sizeof(float), cudaHostAllocDefault));
+  for (int i = 0; i < matrixSize; i++)  
 	  h_A[i]=0.0f;
   
+  for (int i = 0; i < N+2; i++)  
+	  h_A[i*(N+2)] = sin(PI*i/(N+1))*sin(PI*i/(N+1));
+  
     // Copy input vectors from host memory to GPU buffers.
-    checkCudaErrors(cudaMemcpy(oldMatrix, h_A, N *N *sizeof(float), cudaMemcpyHostToDevice));	
-	 
+    checkCudaErrors(cudaMemcpy(oldMatrix, h_A, matrixSize *sizeof(float), cudaMemcpyHostToDevice));	
+	 checkCudaErrors(cudaMemcpy(newMatrix, h_A, matrixSize *sizeof(float), cudaMemcpyHostToDevice));
 	dim3 threadsPerBlock(16, 16);   
 	dim3 numBlocks(N/16, N/16);
     
@@ -220,7 +206,7 @@ for (int i = 0; i < its; i++)
 {	
 	cudaEventRecord(start, 0); 
 
-	JacobiStep<<<numBlocks, threadsPerBlock, threadsPerBlock.x*threadsPerBlock.y*sizeof(float)>>>(oldMatrix,newMatrix);
+	JacobiStep<<<numBlocks, threadsPerBlock, (threadsPerBlock.x+2)*(threadsPerBlock.y+2)*sizeof(float)>>>(oldMatrix,newMatrix);
 
 	cudaEventRecord(stop, 0); // 0 - the default stream
 cudaEventSynchronize(stop);
@@ -234,7 +220,7 @@ thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
     float init = 0;    
     thrust::maximum<float> binary_op1;
     abs_diff<float> binary_op2;
-   float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  N*N,dev_ptrb, init, binary_op1, binary_op2); 
+   float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  matrixSize,dev_ptrb, init, binary_op1, binary_op2); 
    printf("maxx dif is %f\n",max_abs_diff);
    if (max_abs_diff < 1e-6){
 	   printf("breaking at %d\n",i);
@@ -257,12 +243,12 @@ thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
     float init = 0;    
     thrust::maximum<float> binary_op1;
     abs_diff<float> binary_op2;
-   float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  N*N,dev_ptrb, init, binary_op1, binary_op2); 
+   float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  matrixSize,dev_ptrb, init, binary_op1, binary_op2); 
    printf("Final maxx dif is %.8f\n",max_abs_diff);
 }
 
 
-checkCudaErrors(cudaMemcpy(h_A, oldMatrix, N*N * sizeof(float),cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(h_A, oldMatrix, matrixSize * sizeof(float),cudaMemcpyDeviceToHost));
 
 
 //---------------------------------------
@@ -334,7 +320,7 @@ QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
 
-printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,its, total_time, program_time,((1e-6)*N*N)*2*its*sizeof(float)/(total_time)); // Very accurate
+printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,its, total_time, program_time,((1e-6)*matrixSize)*2*its*sizeof(float)/(total_time)); // Very accurate
 
 //checkCudaErrors(cudaFree(oldMatrix));
 //checkCudaErrors(cudaFree(newMatrix));
