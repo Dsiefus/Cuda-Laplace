@@ -18,7 +18,18 @@ struct abs_diff : public thrust::binary_function<T,T,T>
     }
 };
 
+void print_file(int n, float* h_a) {
+	int i, j;
+	FILE *file = fopen("output2.txt", "w+");
 
+	for (i = 0; i < n + 2; i++) {
+		for (j = 0; j < n + 2; j++) {
+			fprintf(file, "%d %d %lf\n", i, j, h_a[i*(n+2)+ j]);
+		}
+	}
+
+	fclose(file);
+}
 
 //indexing of shared memory. Threads have 2 more rows and cols (for "halo" nodes)
 __device__ inline int getSharedIndex(int thrIdx, int thrIdy)
@@ -306,9 +317,9 @@ for (int i = 0; i < N; i++)
 
 
 max = 0.0;
-for (int i = 0; i < N; i++)
+for (int i = 1; i < N; i++)
 	{
-		for (int j = 0; j < N; j++)
+		for (int j = 1; j < N; j++)
 		{
 			float x = (float)(j+1)/(N+1);
 			float y = (float)(i+1)/(N+1);
@@ -316,11 +327,13 @@ for (int i = 0; i < N; i++)
 			for (int n = 1; n < 100; n+=2) {				
 				analyticalValue += 4*(cos(PI*n)/(PI*n*n*n - 4*PI*n) - 1/(PI*n*n*n -4*PI*n))*sin(PI*n*y)*sinh((x - 1)*PI*n)/sinh(-PI*n);				
 			}
-			if (fabs(analyticalValue - h_A[i*N+j]) > max)
-				max = fabs(analyticalValue - h_A[i*N+j]);
+			if (fabs(analyticalValue - h_A[i*(N+2)+j]) > max)
+				max = fabs(analyticalValue - h_A[i*(N+2)+j]);
 		}		
 	}
 printf("cpu max error: %f\n",max); 
+
+print_file(N,h_A);
 
 QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
