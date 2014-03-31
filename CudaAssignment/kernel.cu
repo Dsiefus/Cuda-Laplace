@@ -209,8 +209,8 @@ int main()
 cudaEventCreate(&start);
 cudaEventCreate(&stop);
 
-
-for (int i = 0; i < its; i++)
+int final_its;
+for (final_its = 0; final_its < its; final_its++)
 {	
 	cudaEventRecord(start, 0); 
 
@@ -220,7 +220,7 @@ for (int i = 0; i < its; i++)
 cudaEventSynchronize(stop);
 cudaEventElapsedTime(&time, start, stop);
 
-if ((i+1) % 1000 == 0)
+if ((final_its+1) % 1000 == 0)
 {
 thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(oldMatrix);
 thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
@@ -231,7 +231,7 @@ thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
    float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  matrixSize,dev_ptrb, init, binary_op1, binary_op2); 
    printf("maxx dif is %f\n",max_abs_diff);
    if (max_abs_diff < 1e-6){
-	   printf("breaking at %d\n",i);
+	   printf("breaking at %d\n",final_its);
 	   break;
    }
 }
@@ -331,7 +331,7 @@ QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
 
-printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,its, total_time, program_time,((1e-6)*matrixSize)*2*its*sizeof(float)/(total_time)); // Very accurate
+printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,final_its, total_time, program_time,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); // Very accurate
 
 //checkCudaErrors(cudaFree(oldMatrix));
 //checkCudaErrors(cudaFree(newMatrix));
