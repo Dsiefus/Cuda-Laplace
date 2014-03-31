@@ -309,7 +309,7 @@ for (int i = 0; i < N; i++)
 
 print_file(N, h_A);
 
-	/*
+	
 max = 0.0;
 for (int i = 1; i < N+1; i++)
 	{
@@ -321,12 +321,12 @@ for (int i = 1; i < N+1; i++)
 			for (int n = 1; n < 100; n+=2) {				
 				analyticalValue += 4*(cos(PI*n)/(PI*n*n*n - 4*PI*n) - 1/(PI*n*n*n -4*PI*n))*sin(PI*n*y)*sinh((x - 1)*PI*n)/sinh(-PI*n);				
 			}
-			if (fabs(analyticalValue - h_A[i*N+j]) > max)
-				max = fabs(analyticalValue - h_A[i*N+j]);
+			if (fabs(analyticalValue - h_A[i*(N+2)+j]) > max)
+				max = fabs(analyticalValue - h_A[i*(N+2)+j]);
 		}		
 	}
 printf("cpu max error: %f\n",max); 
-*/
+
 QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
