@@ -27,49 +27,53 @@ __device__ inline int getSharedIndex(int thrIdx, int thrIdy)
 }
 
 //indexing of global memory corresponding to each thread
-__device__ inline int getGlobalIndex()
+__device__ inline int getGlobalIndex(int thx, int thy)
 {	
-	int col = threadIdx.x + blockDim.x * blockIdx.x;
-	int row = threadIdx.y + blockDim.y * blockIdx.y;
+	int col = thx + blockDim.x * blockIdx.x;
+	int row = thy + blockDim.y * blockIdx.y;
 	return col+1 + (row+1)*(blockDim.x * gridDim.x +2);
 }
 
 __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 {
 	extern __shared__ float aux[];
-	int thx = threadIdx.x, thy = threadIdx.y;	
-	aux[ getSharedIndex(thx, thy)] = oldMatrix[getGlobalIndex()];	
+	int thx = threadIdx.x, thy = threadIdx.y;			
 
 	int leftIndex = getSharedIndex(thx-1,thy), rightIndex = getSharedIndex(thx+1,thy);
-	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);
-	float left, right, top, bot;
+	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);	
 	
-	//left
-	if (thx == 0) 	   
-		aux[leftIndex] = oldMatrix[getGlobalIndex()-1];	
+	if (getSharedIndex(thx,thy) < getSharedIndex(blockDim.x,8-1))
+	{
+		aux[ getSharedIndex(thx, thy)] = oldMatrix[getGlobalIndex(thx,thy)];
+		aux[ getSharedIndex(thx, thy+8)] = oldMatrix[getGlobalIndex(thx,thy+8)];
+
+		//left
+		if (thx == 0) 	   {
+			aux[leftIndex] = oldMatrix[getGlobalIndex(thx-1,thy)];
+			aux[getSharedIndex(thx-1,thy+8)] =  oldMatrix[getGlobalIndex(thx-1,thy+8)];
+		}
+		//top
+		if  (thy == 0) 
+			 aux[topIndex] = oldMatrix[getGlobalIndex(thx,thy-1)];
 		
-	//top
-	if  (thy == 0) 
-		 aux[topIndex] = oldMatrix[getGlobalIndex()-(blockDim.x * gridDim.x +2)];			
+		//right
+		if (thx == blockDim.x-1){
+			aux[rightIndex] = oldMatrix[getGlobalIndex(thx+1,thy)];	
+			aux[getSharedIndex(thx+1,thy+8)] =  oldMatrix[getGlobalIndex(thx+1,thy+8)];
+		}
+		//bot
+		if (thy == 7){
+			//printf("sii\n");
+			 aux[getSharedIndex(thx,thy+9)]=oldMatrix[getGlobalIndex(thx,thy+9)];
+		}
+		
+	}
 
-	//right
-	if (thx == blockDim.x-1)
-		aux[rightIndex] = oldMatrix[getGlobalIndex()+1];		
-
-	//bot
-	if (thy == blockDim.y - 1)
-		 aux[botIndex]=oldMatrix[getGlobalIndex()+(blockDim.x * gridDim.x +2)];
-
-	__syncthreads();
-	right = aux[rightIndex];
-	top = aux[topIndex];
-	left = aux[leftIndex];
-	bot = aux[botIndex];
-
-	float newValue =  0.25*(left+right+top+bot);	
-	newMatrix[getGlobalIndex()] = newValue;
+	__syncthreads();	
+	newMatrix[getGlobalIndex(thx,thy)] = 0.25*( aux[rightIndex]+aux[topIndex]+aux[leftIndex]+aux[botIndex]);
 }
 
+/*
 __global__ void ComputeAnalytical(float* matrix)
 {
 	int thx = threadIdx.x, thy = threadIdx.y;  		
@@ -86,7 +90,7 @@ __global__ void ComputeAnalytical(float* matrix)
 		analyticalValue += 4*(cos(PI*n)/(PI*n*n*n - 4*PI*n) - 1/(PI*n*n*n -4*PI*n))*sin(PI*n*y)*sinh((x - 1)*PI*n)/sinh(-PI*n);				
 	}	
 	
-	 matrix[getGlobalIndex()] = analyticalValue;	
+	 matrix[getGlobalIndex(thx,thy)] = analyticalValue;	
 	//printf("GPU: for xy (%f,%f), thread (%d,%d) block(%d,%d), row %d col %d: %f\n", x,y, thx,thy, blockIdx.x ,blockIdx.y,row,col,analyticalValue);
 }
 
@@ -168,13 +172,13 @@ while (current_n > 1) {
   checkCudaErrors(cudaFree(oldMatrix));
   return max;
 }
-
+*/
 int main()
 {
 	LARGE_INTEGER t_ini, t_fin, freq;
 		QueryPerformanceCounter(&t_ini);
 
-	const int N = 1024, its=5000;
+	const int N = 2048, its=5000;
 	const int matrixSize = (N+2)*(N+2);
 	float max;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
