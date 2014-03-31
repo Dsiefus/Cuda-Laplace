@@ -19,7 +19,18 @@ struct abs_diff : public thrust::binary_function<T,T,T>
 };
 
 
+void print_file(int n, float* h_a) {
+	int i, j;
+	FILE *file = fopen("output3.txt", "w+");
 
+	for (i = 0; i < n + 2; i++) {
+		for (j = 0; j < n + 2; j++) {
+			fprintf(file, "%d %d %lf\n", i, j, h_a[i*n+ j]);
+		}
+	}
+
+	fclose(file);
+}
 //indexing of shared memory. Threads have 2 more rows and cols (for "halo" nodes)
 __device__ inline int getSharedIndex(int thrIdx, int thrIdy)
 {
@@ -171,7 +182,7 @@ int main()
 	LARGE_INTEGER t_ini, t_fin, freq;
 		QueryPerformanceCounter(&t_ini);
 
-	const int N = 1024, its=5000;
+	const int N = 512, its=100000;
 	const int matrixSize = (N+2)*(N+2);
 	float max;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
@@ -209,7 +220,7 @@ for (int i = 0; i < its; i++)
 cudaEventSynchronize(stop);
 cudaEventElapsedTime(&time, start, stop);
 
-if ((i+1) % 10000 == 0)
+if ((i+1) % 1000 == 0)
 {
 thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(oldMatrix);
 thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
@@ -233,6 +244,7 @@ total_time += time;
 cudaEventDestroy(start);
 cudaEventDestroy(stop);   
 
+checkCudaErrors(cudaMemcpy(h_A, oldMatrix, matrixSize * sizeof(float),cudaMemcpyDeviceToHost));
 {
 thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(oldMatrix);
 thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
@@ -245,7 +257,7 @@ thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
 }
 
 
-checkCudaErrors(cudaMemcpy(h_A, oldMatrix, matrixSize * sizeof(float),cudaMemcpyDeviceToHost));
+
 
 
 //---------------------------------------
@@ -295,14 +307,16 @@ for (int i = 0; i < N; i++)
  
 */
 
-/*
+print_file(N, h_A);
+
+	/*
 max = 0.0;
-for (int i = 0; i < N; i++)
+for (int i = 1; i < N+1; i++)
 	{
-		for (int j = 0; j < N; j++)
+		for (int j = 1; j < N+1; j++)
 		{
-			float x = (float)(j+1)/(N+1);
-			float y = (float)(i+1)/(N+1);
+			float x = (float)(j)/(N+1);
+			float y = (float)(i)/(N+1);
 			float analyticalValue = 0.0;
 			for (int n = 1; n < 100; n+=2) {				
 				analyticalValue += 4*(cos(PI*n)/(PI*n*n*n - 4*PI*n) - 1/(PI*n*n*n -4*PI*n))*sin(PI*n*y)*sinh((x - 1)*PI*n)/sinh(-PI*n);				
