@@ -73,7 +73,7 @@ __global__ void JacobiStep(float *oldMatrix, float *newMatrix)
 
 	
 	
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 9; i++)
 	{
 		__syncthreads();
 		float temp = 0.25*(aux[rightIndex]+aux[topIndex]+ aux[leftIndex]+aux[botIndex]);
@@ -191,7 +191,7 @@ int main()
 	LARGE_INTEGER t_ini, t_fin, freq;
 		QueryPerformanceCounter(&t_ini);
 
-	const int N = 512, its=100000;
+	const int N = 1024, its=100000;
 	const int matrixSize = (N+2)*(N+2);
 	float max;
     float *oldMatrix = 0,  *diff = 0, *newMatrix = 0;
@@ -239,7 +239,7 @@ thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(newMatrix);
     abs_diff<float> binary_op2;
    float max_abs_diff = thrust::inner_product(dev_ptra,dev_ptra +  matrixSize,dev_ptrb, init, binary_op1, binary_op2); 
    printf("maxx dif is %f\n",max_abs_diff);
-   if (max_abs_diff < 1e-6){
+   if (max_abs_diff < 2e-6){
 	   printf("breaking at %d\n",final_its);
 	   break;
    }
@@ -339,7 +339,7 @@ QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
 
-printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,final_its, total_time, program_time,((1e-6)*matrixSize)*10*final_its*sizeof(float)/(total_time)); // Very accurate
+printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,final_its, total_time, program_time,((1e-6)*matrixSize)*20*final_its*sizeof(float)/(total_time)); // Very accurate
 
 //checkCudaErrors(cudaFree(oldMatrix));
 //checkCudaErrors(cudaFree(newMatrix));
