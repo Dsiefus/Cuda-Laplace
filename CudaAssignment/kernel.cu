@@ -50,10 +50,8 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 	extern __shared__ float aux[];
 	int thx = threadIdx.x, thy = threadIdx.y;	
 	aux[ getSharedIndex(thx, thy)] = oldMatrix[getGlobalIndex()];	
-
 	int leftIndex = getSharedIndex(thx-1,thy), rightIndex = getSharedIndex(thx+1,thy);
-	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);
-	//float left, right, top, bot;
+	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);	
 	
 	//left
 	if (thx == 0) 	   
@@ -77,19 +75,7 @@ __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
 }
 
 
-float GetMaxDiff( float* a, float* b, int matrixSize)
-{
-	thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(a);
-thrust::device_ptr<float> dev_ptrb =  thrust::device_pointer_cast(b);
-	 // initial value of the reduction
-    float init = 0;    
-    thrust::maximum<float> binary_op1;
-    abs_diff<float> binary_op2;
-   return thrust::inner_product(dev_ptra,dev_ptra +  matrixSize,dev_ptrb, init, binary_op1, binary_op2); 
-}
-
-
-float GetMaxDiff2( float* a, thrust::device_vector<float> b, int matrixSize)
+float GetMaxDiff( float* a, thrust::device_vector<float> b, int matrixSize)
 {
 	thrust::device_ptr<float> dev_ptra =  thrust::device_pointer_cast(a);
 	//thrust::device_ptr dev_ptrb = &b[0];
@@ -101,58 +87,62 @@ float GetMaxDiff2( float* a, thrust::device_vector<float> b, int matrixSize)
 }
 
 
-
-
 int main(int argc, char* argv[])
 {
 	LARGE_INTEGER t_ini, t_fin, freq;
 		QueryPerformanceCounter(&t_ini);
 		
-		if (argc != 3)
-		{
-			printf("Usage: %s <matrix_side> <desired_accuracy>\n", argv[0]);
-			return 0;
-		}
-	
-	if (atoi(argv[1])%16 != 0)
+	if (argc != 3)
+	{
+		printf("Usage: %s <matrix_side> <desired_accuracy>\n", argv[0]);
+		return 0;
+	}
+	const int N = atoi(argv[1]);
+	if (N%16 != 0)
 	{
 		printf("Error: matrix side must divide 16\n");
 		return -1;
 	}
 	
-		
-
+	const float accuracy = atof(argv[2]);
+	if(accuracy > 0.5 || accuracy < 0.001)
+	{
+		printf("Error: accuracy must be smaller than 0.5 and bigger than 0.001\n");
+		return -1;
+	}
+	
 	char filename[20];
+	filename[0]=0;
 	strcpy(filename,argv[1]);
 	strcat(filename,"_2.dat");
 	FILE *matrixFile = fopen(filename, "rb");	
 	if (matrixFile == NULL)
 	{
-		printf("File error \n");
+		printf("Analytical solution file not found\n");
 		return -1;
 	}	
+
+	char evolutionFileName[20];
+evolutionFileName[0]=0;
+	strcpy(evolutionFileName,argv[1]);
+	strcat(evolutionFileName,"_boundaries_mem.txt");
+	FILE* evolutionFile = fopen (evolutionFileName, "a+");
+
+
 	
-
-
-	const int N = atoi(argv[1]);
-		//int N = 512, 
-			int its = 10000;
+		
+			int its = 160000;
 	const int matrixSize = (N+2)*(N+2);
-	float max;
     float *oldMatrix = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, matrixSize*sizeof(float)));	
 	checkCudaErrors( cudaMalloc((void**)&newMatrix, matrixSize*sizeof(float)));	     
-  
+
 	thrust::host_vector<float> analyticalHost(matrixSize);	
 	int n=fread(&analyticalHost[0],sizeof(float),matrixSize,matrixFile);
-	thrust::device_vector<float> analyticalDev = analyticalHost;
-		
-	fclose(matrixFile);
 
-	for (int i = 0; i < N*N; i++)
-	{
-		printf("%.2f ",analyticalHost[i]);
-	}
+	 try{
+	thrust::device_vector<float> analyticalDev = analyticalHost;		
+	fclose(matrixFile);
 
    float* h_A = 0;
   checkCudaErrors(cudaHostAlloc((void**) &h_A,matrixSize * sizeof(float), cudaHostAllocDefault));
@@ -174,66 +164,59 @@ cudaEventCreate(&start);
 cudaEventCreate(&stop);
 
 int final_its;
-for (final_its = 0; final_its < its; final_its++)
+float max_abs_diff=1.0;
+for (final_its = 0; max_abs_diff > accuracy && final_its < its; final_its++)
 {	
 	cudaEventRecord(start, 0); 
 
 	JacobiStep<<<numBlocks, threadsPerBlock, (threadsPerBlock.x+2)*(threadsPerBlock.y+2)*sizeof(float)>>>(oldMatrix,newMatrix);
 
 	cudaEventRecord(stop, 0); // 0 - the default stream
-cudaEventSynchronize(stop);
-cudaEventElapsedTime(&time, start, stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&time, start, stop);
 
-if ((final_its+1) % 1000 == 0)
-{
-
-   float max_abs_diff =GetMaxDiff2(oldMatrix,analyticalDev,matrixSize);
-   printf("maxx dif is %f\n",max_abs_diff);
-   if (max_abs_diff < 2e-7){
-	   printf("breaking at %d\n",final_its);
-	   break;
-   }
-}
-total_time += time;
-	std::swap(oldMatrix, newMatrix);
-           
+	if ((final_its+1) % 1000 == 0)
+	{
+		 max_abs_diff =GetMaxDiff(oldMatrix,analyticalDev,matrixSize);		
+		 printf("%f\n",max_abs_diff);
+		 fprintf(evolutionFile,"%d %f\n",final_its+1,max_abs_diff);
+	}
+	total_time += time;
+	std::swap(oldMatrix, newMatrix);           
 }        
-
-	cudaDeviceSynchronize();
+ max_abs_diff =GetMaxDiff(oldMatrix,analyticalDev,matrixSize);	
+cudaDeviceSynchronize();
 cudaEventDestroy(start);
 cudaEventDestroy(stop);   
 
-checkCudaErrors(cudaMemcpy(h_A, oldMatrix, matrixSize * sizeof(float),cudaMemcpyDeviceToHost));
-{
-float max_abs_diff =GetMaxDiff2(oldMatrix,analyticalDev,matrixSize);
-   printf("Final maxx dif is %.8f\n",max_abs_diff);
-}
-
-max = 0.0;
-for (int i = 0; i < matrixSize; i++)
-{
-	if(fabs(h_A[i] - analyticalHost[i]) > max)
-		max = fabs(h_A[i] - analyticalHost[i]);
-}
-printf("cpu max: %f\n",max);
-
-
-print_file(N, h_A);
-
-	
-max = 0.0;
-
+//print_file(N, h_A);
 
 QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
 
-printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s\n",N,final_its, total_time, program_time,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); // Very accurate
+char outputFileName[20];
+outputFileName[0]=0;
+	strcpy(outputFileName,argv[1]);
+	strcat(outputFileName,"_times.txt");
+	FILE* outfile = fopen(outputFileName,"a+");
+printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s. ",N,final_its, total_time, program_time,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); 
+printf("Accuracy desired: %f (obtained %f)\n",accuracy,max_abs_diff);
+fprintf(outfile,"Iterations: %d. Time: %f ms. Accuracy desired: %f (obtained %f). Memory bandwith: %f GB/s\n",final_its, total_time,accuracy,max_abs_diff,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); 
+fprintf(evolutionFile,"----------------------------\n");
+fclose(outfile);
+fclose(evolutionFile);
 
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 checkCudaErrors(cudaFreeHost(h_A));
 checkCudaErrors( cudaDeviceReset());  
 
+analyticalHost.clear();
+analyticalDev.clear();
+  }
+  catch(thrust::system_error e)
+{   // printf(e.what());
+  }
     return 0;
 }
