@@ -174,14 +174,14 @@ for (final_its = 0; max_abs_diff > accuracy && final_its < its; final_its++)
 	cudaEventRecord(stop, 0); // 0 - the default stream
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&time, start, stop);
-
+	total_time += time;
 	if ((final_its+1) % 1000 == 0)
 	{
 		 max_abs_diff =GetMaxDiff(oldMatrix,analyticalDev,matrixSize);		
 		 printf("%f\n",max_abs_diff);
-		 fprintf(evolutionFile,"%d %f\n",final_its+1,max_abs_diff);
+		 fprintf(evolutionFile,"%f %f\n",total_time,max_abs_diff);
 	}
-	total_time += time;
+	
 	std::swap(oldMatrix, newMatrix);           
 }        
  max_abs_diff =GetMaxDiff(oldMatrix,analyticalDev,matrixSize);	
@@ -189,7 +189,6 @@ cudaDeviceSynchronize();
 cudaEventDestroy(start);
 cudaEventDestroy(stop);   
 
-//print_file(N, h_A);
 
 QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
