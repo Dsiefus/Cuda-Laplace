@@ -215,7 +215,7 @@ fclose(evolutionFile);
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 
-checkCudaErrors( cudaDeviceReset());  
+//checkCudaErrors( cudaDeviceReset());  
 
     return 0;
 }
