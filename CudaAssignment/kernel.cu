@@ -128,19 +128,17 @@ evolutionFileName[0]=0;
 	strcat(evolutionFileName,"_boundaries_mem.txt");
 	FILE* evolutionFile = fopen (evolutionFileName, "a+");
 
-
-	
-		
-			int its = 250000;
+			
+	int its = 250000;
 	const int matrixSize = (N+2)*(N+2);
     float *oldMatrix = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, matrixSize*sizeof(float)));	
 	checkCudaErrors( cudaMalloc((void**)&newMatrix, matrixSize*sizeof(float)));	     
 
+	{
 	thrust::host_vector<float> analyticalHost(matrixSize);	
 	int n=fread(&analyticalHost[0],sizeof(float),matrixSize,matrixFile);
-
-	 try{
+	 
 	thrust::device_vector<float> analyticalDev = analyticalHost;		
 	fclose(matrixFile);
 
@@ -209,13 +207,7 @@ fclose(evolutionFile);
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 checkCudaErrors(cudaFreeHost(h_A));
-checkCudaErrors( cudaDeviceReset());  
-
-analyticalHost.clear();
-analyticalDev.clear();
   }
-  catch(thrust::system_error e)
-{   // printf(e.what());
-  }
+ checkCudaErrors( cudaDeviceReset()); 
     return 0;
 }
