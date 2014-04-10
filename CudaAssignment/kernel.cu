@@ -132,7 +132,7 @@ int main(int argc, char* argv[])
 		return -1;
 	}	
 
-	char evolutionFileName[20];
+	char evolutionFileName[50];
 evolutionFileName[0]=0;
 	strcpy(evolutionFileName,argv[1]);
 	strcat(evolutionFileName,"_shared_no_bound.txt");
@@ -215,7 +215,7 @@ fclose(evolutionFile);
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 
-//checkCudaErrors( cudaDeviceReset());  
+checkCudaErrors( cudaDeviceReset());  
 
     return 0;
 }
