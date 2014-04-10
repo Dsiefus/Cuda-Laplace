@@ -46,32 +46,22 @@ __device__ inline int getGlobalIndex()
 }
 
 __global__ void JacobiStep(const float *oldMatrix, float *newMatrix)
-{
-	extern __shared__ float aux[];
-	int thx = threadIdx.x, thy = threadIdx.y;	
-	aux[ getSharedIndex(thx, thy)] = oldMatrix[getGlobalIndex()];	
-	int leftIndex = getSharedIndex(thx-1,thy), rightIndex = getSharedIndex(thx+1,thy);
-	int topIndex = getSharedIndex(thx,thy-1), botIndex = getSharedIndex(thx,thy+1);	
+{	
+	int thx = threadIdx.x, thy = threadIdx.y;		
 	
-	//left
-	if (thx == 0) 	   
-		aux[leftIndex] = oldMatrix[getGlobalIndex()-1];	
+	//left		   
+		float left = oldMatrix[getGlobalIndex()-1];	
 		
-	//top
-	if  (thy == 0) 
-		 aux[topIndex] = oldMatrix[getGlobalIndex()-(blockDim.x * gridDim.x +2)];			
+	//top	
+		 float top = oldMatrix[getGlobalIndex()-(blockDim.x * gridDim.x +2)];			
 
-	//right
-	if (thx == blockDim.x-1)
-		aux[rightIndex] = oldMatrix[getGlobalIndex()+1];		
+	//right	
+		float right = oldMatrix[getGlobalIndex()+1];		
 
-	//bot
-	if (thy == blockDim.y - 1)
-		 aux[botIndex]=oldMatrix[getGlobalIndex()+(blockDim.x * gridDim.x +2)];
-
-	__syncthreads();
+	//bot	
+		 float bot =oldMatrix[getGlobalIndex()+(blockDim.x * gridDim.x +2)];	
 	
-	newMatrix[getGlobalIndex()] =  0.25*(aux[rightIndex]+aux[topIndex]+ aux[leftIndex]+aux[botIndex]);
+	newMatrix[getGlobalIndex()] =  0.25*(left+top+right+bot);
 }
 
 
@@ -122,10 +112,10 @@ int main(int argc, char* argv[])
 		return -1;
 	}	
 
-	char evolutionFileName[20];
+	char evolutionFileName[50];
 evolutionFileName[0]=0;
 	strcpy(evolutionFileName,argv[1]);
-	strcat(evolutionFileName,"_boundaries_mem.txt");
+	strcat(evolutionFileName,"_global.txt");
 	FILE* evolutionFile = fopen (evolutionFileName, "a+");
 
 
@@ -169,7 +159,7 @@ for (final_its = 0; max_abs_diff > accuracy && final_its < its; final_its++)
 {	
 	cudaEventRecord(start, 0); 
 
-	JacobiStep<<<numBlocks, threadsPerBlock, (threadsPerBlock.x+2)*(threadsPerBlock.y+2)*sizeof(float)>>>(oldMatrix,newMatrix);
+	JacobiStep<<<numBlocks, threadsPerBlock>>>(oldMatrix,newMatrix);
 
 	cudaEventRecord(stop, 0); // 0 - the default stream
 	cudaEventSynchronize(stop);
@@ -194,10 +184,10 @@ QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
 
-char outputFileName[20];
+char outputFileName[50];
 outputFileName[0]=0;
 	strcpy(outputFileName,argv[1]);
-	strcat(outputFileName,"_times.txt");
+	strcat(outputFileName,"_global_times.txt");
 	FILE* outfile = fopen(outputFileName,"a+");
 printf("Time for N= %d, %d its: %f ms. Total time: %f. Memory bandwith is %f GB/s. ",N,final_its, total_time, program_time,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); 
 printf("Accuracy desired: %f (obtained %f)\n",accuracy,max_abs_diff);
