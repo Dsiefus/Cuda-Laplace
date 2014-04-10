@@ -115,13 +115,13 @@ int main(int argc, char* argv[])
 		return -1;
 	}	
 
-	char evolutionFileName[20];
+	char evolutionFileName[50];
 evolutionFileName[0]=0;
 	strcpy(evolutionFileName,argv[1]);
 	strcat(evolutionFileName,"multi_loading.txt");
 	FILE* evolutionFile = fopen (evolutionFileName, "a+");
 
-	int its = 160000;
+	int its = 250000;
 	const int matrixSize = (N+2)*(N+2);
     float *oldMatrix = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, matrixSize*sizeof(float)));	
@@ -189,7 +189,7 @@ checkCudaErrors(cudaMemcpy(h_A, oldMatrix, matrixSize * sizeof(float),cudaMemcpy
 QueryPerformanceCounter(&t_fin);\
 		QueryPerformanceFrequency(&freq);\
 		double program_time = (double)(t_fin.QuadPart - t_ini.QuadPart) / (double)freq.QuadPart;
-char outputFileName[20];
+char outputFileName[50];
 outputFileName[0]=0;
 	strcpy(outputFileName,argv[1]);
 	strcat(outputFileName,"_multiloading_times.txt");
