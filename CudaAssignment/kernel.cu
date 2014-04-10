@@ -148,16 +148,12 @@ int main(int argc, char* argv[])
 		printf("Error opening file\n");
 		return -1;
 	}
-	try{
+	{
 	fprintf(evolutionFile,"Internal iterations: %d\n",INTERNAL_ITERATIONS);
 	thrust::host_vector<float> analyticalHost(matrixSize);	
 	int n=fread(&analyticalHost[0],sizeof(float),matrixSize,matrixFile);
-	fclose(matrixFile);	 
-
-	
-	thrust::device_vector<float> analyticalDev = analyticalHost;
-
-	
+	fclose(matrixFile);	 		
+	thrust::device_vector<float> analyticalDev = analyticalHost;	
 	 
 	float max;
     float *oldMatrix = 0, *newMatrix = 0;
@@ -231,11 +227,8 @@ fclose(evolutionFile);
 checkCudaErrors(cudaFree(oldMatrix));
 checkCudaErrors(cudaFree(newMatrix));
 checkCudaErrors(cudaFreeHost(h_A));
-checkCudaErrors( cudaDeviceReset());  
+
   }
-  catch(thrust::system_error e)
-{  
-	//printf(e.what());
-  }
+  checkCudaErrors( cudaDeviceReset());  
    
 }
