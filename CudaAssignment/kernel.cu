@@ -131,7 +131,7 @@ evolutionFileName[0]=0;
 
 	
 		
-			int its = 160000;
+			int its = 250000;
 	const int matrixSize = (N+2)*(N+2);
     float *oldMatrix = 0, *newMatrix = 0;
 	checkCudaErrors( cudaMalloc((void**)&oldMatrix, matrixSize*sizeof(float)));	
