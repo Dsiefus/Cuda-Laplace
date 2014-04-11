@@ -8,7 +8,7 @@
 
 #define PI 3.1415926535897932384626433832795
 
-#define INTERNAL_ITERATIONS 6
+#define INTERNAL_ITERATIONS 5
 
 template <typename T>
 struct abs_diff : public thrust::binary_function<T,T,T>
@@ -75,15 +75,14 @@ __global__ void JacobiStep(float *oldMatrix, float *newMatrix)
 
 	
 	
-	for (int i = 0; i < INTERNAL_ITERATIONS-1; i++)
+	for (int i = 0; i < INTERNAL_ITERATIONS; i++)
 	{
 		__syncthreads();
 		float temp = 0.25*(aux[rightIndex]+aux[topIndex]+ aux[leftIndex]+aux[botIndex]);
 		__syncthreads();
 		aux[getSharedIndex(thx,thy)]=temp;
 	}
-	__syncthreads();
-	newMatrix[getGlobalIndex()] =  aux[getSharedIndex(thx,thy)];
+	__syncthreads();	
 	newMatrix[getGlobalIndex()] = 0.25*(aux[rightIndex]+aux[topIndex]+ aux[leftIndex]+aux[botIndex]);
 }
 
