@@ -117,10 +117,10 @@ void PrintResults(char* size,int matrixSide, int final_its,float total_time,
 	strcpy(outputFileName,size);
 	strcat(outputFileName,"_multiloading_times.txt");
 	FILE* outfile = fopen(outputFileName,"a+");
-	printf("Time for matrixSide= %d, %d maxIterations: %f ms. Total time: %f.",
-			matrixSide,final_its, total_time);
+	printf("Time for matrixSide= %d, %d Iterations. %f ms. Total time: %f.",
+			matrixSide,final_its, total_time, program_time);
 	printf("Memory bandwith is %f GB/s.", 
-	   program_time,((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); 
+	   ((1e-6)*matrixSize)*2*final_its*sizeof(float)/(total_time)); 
 	printf("Accuracy desired: %f (obtained %f)\n",accuracy,max_abs_diff);
 	fprintf(outfile,"Iterations: %d. Time: %f ms. Accuracy desired: %f ",
 	 		final_its, total_time,accuracy);
