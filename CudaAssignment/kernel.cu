@@ -117,6 +117,12 @@ void PrintResults(char* size,int matrixSide, int final_its,float total_time,
 	strcpy(outputFileName,size);
 	strcat(outputFileName,"_multiloading_times.txt");
 	FILE* outfile = fopen(outputFileName,"a+");
+	if (outfile == NULL)
+	{
+		printf("Error with output file\n");
+		exit(-1);
+	}
+
 	printf("Time for matrixSide= %d, %d Iterations. %f ms. Total time: %f.",
 			matrixSide,final_its, total_time, program_time);
 	printf("Memory bandwith is %f GB/s.", 
